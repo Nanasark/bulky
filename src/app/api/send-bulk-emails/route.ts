@@ -6,12 +6,6 @@ import { parse } from "papaparse";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Define a type for each recipient in the file
-interface Recipient {
-  email: string;
-  name: string;
-}
-
 export async function POST(req: Request) {
   try {
     console.log("Starting bulk email sending process...");
@@ -29,6 +23,7 @@ export async function POST(req: Request) {
     const emailSubject = formData.get("subject") as string;
     const delaySeconds = parseInt(formData.get("delaySeconds") as string);
 
+    // Log received form data (exclude sensitive fields)
     console.log("Form data overview:", {
       recipientFile: recipientFile?.name,
       htmlTemplate: !!htmlTemplate ? "Received" : "Not Received",
@@ -47,8 +42,9 @@ export async function POST(req: Request) {
       );
     }
 
-    let recipients: Recipient[] = []; // Change type to Recipient[]
+    let recipients: { email: string; name: string }[] = [];
 
+    // Parse recipient file
     console.log("Parsing recipient file...");
     if (
       recipientFile.name.endsWith(".xlsx") ||
@@ -63,36 +59,7 @@ export async function POST(req: Request) {
     } else if (recipientFile.name.endsWith(".txt")) {
       const text = await recipientFile.text();
       const result = parse(text, { header: true });
-      console.log("Raw parsed data from Text file:", result.data);
-
-      if (result.errors.length > 0) {
-        console.error("Error parsing text file:", result.errors);
-        return NextResponse.json(
-          { success: false, message: "Invalid text file format" },
-          { status: 400 }
-        );
-      }
-
-      // Explicitly type parsed data and filter invalid rows
-      recipients = (result.data as { email: unknown; name: unknown }[])
-        .map((row) => {
-          if (
-            typeof row === "object" &&
-            row !== null &&
-            "email" in row &&
-            typeof row["email"] === "string"
-          ) {
-            const email = row["email"].trim();
-            const name =
-              typeof row["name"] === "string"
-                ? row["name"].trim()
-                : "Valued Customer";
-            return { email, name };
-          }
-          return null;
-        })
-        .filter((row): row is Recipient => row !== null);
-
+      recipients = result.data as { email: string; name: string }[];
       console.log("Parsed recipients from Text file:", recipients);
     } else {
       console.error("Unsupported file format:", recipientFile.name);
@@ -119,6 +86,7 @@ export async function POST(req: Request) {
       },
     });
 
+    // Verify the transporter connection
     try {
       console.log("Verifying SMTP transporter...");
       await transporter.verify();
@@ -134,12 +102,14 @@ export async function POST(req: Request) {
     let successCount = 0;
     let failCount = 0;
 
+    // Send emails
     for (const recipient of recipients) {
       const { email, name } = recipient;
       console.log(`Preparing email for: ${email}`);
 
+      // Simple mail merge
       const personalizedContent = htmlTemplate
-        .replace(/{{name}}/g, name)
+        .replace(/{{name}}/g, name || "Valued Customer")
         .replace(/{{email}}/g, email);
 
       try {
@@ -153,6 +123,7 @@ export async function POST(req: Request) {
         successCount++;
         console.log(`Email successfully sent to: ${email}`);
 
+        // Delay between sends
         if (delaySeconds > 0) {
           console.log(
             `Delaying for ${delaySeconds} seconds before next email...`
@@ -165,6 +136,7 @@ export async function POST(req: Request) {
       }
     }
 
+    // Final log for results
     console.log(
       `Bulk email sending completed. Success: ${successCount}, Failures: ${failCount}`
     );
