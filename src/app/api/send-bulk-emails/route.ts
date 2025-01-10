@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import xlsx from "xlsx";
 import { parse, ParseResult } from "papaparse";
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function POST(req: Request) {
   try {
@@ -126,12 +126,12 @@ export async function POST(req: Request) {
         successCount++;
         console.log(`Email successfully sent to: ${email}`);
 
-        if (delaySeconds > 0) {
-          console.log(
-            `Delaying for ${delaySeconds} seconds before next email...`
-          );
-          await delay(delaySeconds * 1000);
-        }
+        // if (delaySeconds > 0) {
+        //   console.log(
+        //     `Delaying for ${delaySeconds} seconds before next email...`
+        //   );
+        //   await delay(delaySeconds * 1000);
+        // }
       } catch (error) {
         failCount++;
         console.error(`Failed to send email to ${email}:`, error);
