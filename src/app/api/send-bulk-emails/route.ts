@@ -1,8 +1,7 @@
 import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
-
 import xlsx from "xlsx";
-import { parse } from "papaparse";
+import { parse, ParseResult } from "papaparse";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -23,7 +22,6 @@ export async function POST(req: Request) {
     const emailSubject = formData.get("subject") as string;
     const delaySeconds = parseInt(formData.get("delaySeconds") as string);
 
-    // Log received form data (exclude sensitive fields)
     console.log("Form data overview:", {
       recipientFile: recipientFile?.name,
       htmlTemplate: !!htmlTemplate ? "Received" : "Not Received",
@@ -44,7 +42,6 @@ export async function POST(req: Request) {
 
     let recipients: { email: string; name: string }[] = [];
 
-    // Parse recipient file
     console.log("Parsing recipient file...");
     if (
       recipientFile.name.endsWith(".xlsx") ||
@@ -54,13 +51,20 @@ export async function POST(req: Request) {
         type: "buffer",
       });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      recipients = xlsx.utils.sheet_to_json(worksheet);
-      console.log("Parsed recipients from Excel file:", recipients);
+      recipients = xlsx.utils.sheet_to_json(worksheet) as {
+        email: string;
+        name: string;
+      }[];
     } else if (recipientFile.name.endsWith(".txt")) {
       const text = await recipientFile.text();
-      const result = parse(text, { header: true });
-      recipients = result.data as { email: string; name: string }[];
-      console.log("Parsed recipients from Text file:", recipients);
+      const result: ParseResult<string[]> = parse(text, {
+        header: false,
+        skipEmptyLines: true,
+      });
+      recipients = result.data.map((row: string[]) => ({
+        email: row[0] || "",
+        name: row[1] || "",
+      }));
     } else {
       console.error("Unsupported file format:", recipientFile.name);
       return NextResponse.json(
@@ -69,13 +73,9 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(
-      "Recipient list successfully parsed. Total recipients:",
-      recipients.length
-    );
+    console.log("Parsed recipients:", recipients);
+    console.log("Total recipients:", recipients.length);
 
-    // Create Nodemailer transporter
-    console.log("Configuring SMTP transporter...");
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
@@ -86,7 +86,6 @@ export async function POST(req: Request) {
       },
     });
 
-    // Verify the transporter connection
     try {
       console.log("Verifying SMTP transporter...");
       await transporter.verify();
@@ -102,12 +101,16 @@ export async function POST(req: Request) {
     let successCount = 0;
     let failCount = 0;
 
-    // Send emails
     for (const recipient of recipients) {
       const { email, name } = recipient;
+      if (!email) {
+        console.error("Invalid recipient data:", recipient);
+        failCount++;
+        continue;
+      }
+
       console.log(`Preparing email for: ${email}`);
 
-      // Simple mail merge
       const personalizedContent = htmlTemplate
         .replace(/{{name}}/g, name || "Valued Customer")
         .replace(/{{email}}/g, email);
@@ -123,7 +126,6 @@ export async function POST(req: Request) {
         successCount++;
         console.log(`Email successfully sent to: ${email}`);
 
-        // Delay between sends
         if (delaySeconds > 0) {
           console.log(
             `Delaying for ${delaySeconds} seconds before next email...`
@@ -136,7 +138,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Final log for results
     console.log(
       `Bulk email sending completed. Success: ${successCount}, Failures: ${failCount}`
     );
