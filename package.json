@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "bull": "^4.16.5",
+    "ioredis": "^5.4.2",
     "next": "15.1.4",
     "nodemailer": "^6.9.16",
     "papaparse": "^5.5.0",
